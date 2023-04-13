@@ -34,17 +34,46 @@ void skip_comments(FILE *file) {
   }
 }
 
+/*
+ * This function allocates a 2D array of arbitrary type and returns a pointer to
+ * the array. The function takes the number of rows, columns and size of the
+ * data type as input arguments. It returns a void** pointer to the array.
+ */
 void **alloc_2D_array(int num_rows, int num_cols, size_t type_size) {
   int i;
+
+  // Allocate memory for the row pointers
   void **arr = (void **)malloc(num_rows * sizeof(void *));
 
+  // Allocate memory for the data and assign it to the first row pointer
   arr[0] = calloc(num_rows * num_cols, type_size);
 
+  // Assign the remaining row pointers to point to the appropriate location in
+  // the data
   for (i = 1; i < num_rows; i++) {
     arr[i] = arr[i - 1] + num_cols;
   }
 
+  // Return the pointer to the 2D array
   return arr;
+}
+
+/**
+ * This function performs simple binarization on a grayscale image map,
+ * converting each pixel to either black or white based on a threshold value.
+ */
+void simple_binarization(unsigned char **grayscale_map, int threshold,
+                         int num_rows, int num_cols) {
+  int i, j;
+
+  // Loop through each pixel in the image map.
+  for (i = 0; i < num_rows; i++) {
+    for (j = 0; j < num_cols; j++) {
+      // If the pixel value is greater than the threshold, set it to white
+      // (255). Otherwise, set it to black (0).
+      grayscale_map[i][j] = grayscale_map[i][j] > threshold ? 255 : 0;
+    }
+  }
 }
 
 /**
@@ -413,12 +442,8 @@ int main(int argc, char **argv) {
     exit(1);
 
   // Allocate memory for grayscale array
-  unsigned char **gray_channel =
-      (unsigned char **)malloc(num_rows * sizeof(unsigned char *));
-  gray_channel[0] =
-      (unsigned char *)malloc(num_rows * num_cols * sizeof(unsigned char));
-  for (i = 1; i < num_rows; i++)
-    gray_channel[i] = gray_channel[i - 1] + num_cols;
+  unsigned char **gray_channel = (unsigned char **)alloc_2D_array(
+      num_rows, num_cols, sizeof(unsigned char));
 
   // Compute grayscale values from RGB values
   unsigned char r, g, b, gray_value;
@@ -434,15 +459,12 @@ int main(int argc, char **argv) {
 
   // Calculate integral image
   long int **integral_image =
-      (long int **)malloc(num_rows * sizeof(long int *));
-  integral_image[0] =
-      (long int *)malloc(num_rows * num_cols * sizeof(long int));
-  for (i = 1; i < num_rows; i++)
-    integral_image[i] = integral_image[i - 1] + num_cols;
+      (long int **)alloc_2D_array(num_rows, num_cols, sizeof(long int));
 
   compute_integral_image(gray_channel, integral_image, num_cols, num_rows);
 
   // simple binarization with a fixed threshold
+  // simple_binarization(gray_channel, 100, num_rows, num_cols);
 
   // write pgm file
   if (write_pgm_image(output_file_name, gray_channel[0], num_rows, num_cols,
