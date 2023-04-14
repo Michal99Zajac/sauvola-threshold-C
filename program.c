@@ -89,28 +89,33 @@ void simple_binarization(unsigned char **grayscale_map, int threshold,
  * O(num_cols*num_cols) time, where num_cols and num_rows are the dimensions of
  * the input array.
  */
-void compute_integral_image(unsigned char **input, unsigned long **output,
+void compute_integral_image(unsigned char **input, unsigned long long ***output,
                             int num_cols, int num_rows) {
   int i, j;
 
   // Compute the first row of the integral image
   for (j = 0; j < num_cols; j++) {
-    output[0][j] = input[0][j];
+    output[0][j][0] = input[0][j];
+    output[0][j][1] = pow(input[0][j], 2);
     if (j > 0) {
-      output[0][j] += output[0][j - 1];
+      output[0][j][0] += output[0][j - 1][0];
+      output[0][j][1] += output[0][j - 1][1];
     }
   }
 
   // Compute the first column of the integral image
   for (i = 1; i < num_rows; i++) {
-    output[i][0] = input[i][0] + output[i - 1][0];
+    output[i][0][0] = input[i][0] + output[i - 1][0][0];
+    output[i][0][1] = pow(input[i][0], 2) + output[i - 1][0][1];
   }
 
   // Compute the rest of the integral image
   for (i = 1; i < num_rows; i++) {
     for (j = 1; j < num_cols; j++) {
-      output[i][j] = input[i][j] + output[i - 1][j] + output[i][j - 1] -
-                     output[i - 1][j - 1];
+      output[i][j][0] = input[i][j] + output[i - 1][j][0] +
+                        output[i][j - 1][0] - output[i - 1][j - 1][0];
+      output[i][j][1] = pow(input[i][j], 2) + output[i - 1][j][1] +
+                        output[i][j - 1][1] - output[i - 1][j - 1][1];
     }
   }
 }
@@ -477,7 +482,7 @@ void sauvola_threshold(unsigned char **grayscale_map, unsigned char **output,
 }
 
 void sauvola_threshold_with_integral_image(unsigned char **grayscale_map,
-                                           unsigned long **integral_image,
+                                           unsigned long long ***integral_image,
                                            unsigned char **output, int num_cols,
                                            int num_rows, float k, int r,
                                            float R) {
@@ -487,47 +492,35 @@ void sauvola_threshold_with_integral_image(unsigned char **grayscale_map,
 
   for (int i = 0; i < num_rows; i++) {
     for (int j = 0; j < num_cols; j++) {
-      // Determine the bounds of the local region around the current pixel
       int left = fmax(j - r, 0);
       int right = fmin(j + r, num_cols - 1);
       int top = fmax(i - r, 0);
       int bottom = fmin(i + r, num_rows - 1);
 
-      // Compute the mean and standard deviation of the pixel values in the
-      // local region
-      unsigned long A =
-          (top - 1 < 0 || left - 1 < 0) ? 0 : integral_image[top - 1][left - 1];
-      unsigned long B = top - 1 < 0 ? 0 : integral_image[top - 1][right];
-      unsigned long C = left - 1 < 0 ? 0 : integral_image[bottom][left - 1];
-      unsigned long D = integral_image[bottom][right];
+      unsigned long A = (top - 1 < 0 || left - 1 < 0)
+                            ? 0
+                            : integral_image[top - 1][left - 1][0];
+      unsigned long B = top - 1 < 0 ? 0 : integral_image[top - 1][right][0];
+      unsigned long C = left - 1 < 0 ? 0 : integral_image[bottom][left - 1][0];
+      unsigned long D = integral_image[bottom][right][0];
+
+      unsigned long A_sq = (top - 1 < 0 || left - 1 < 0)
+                               ? 0
+                               : integral_image[top - 1][left - 1][1];
+      unsigned long B_sq = top - 1 < 0 ? 0 : integral_image[top - 1][right][1];
+      unsigned long C_sq =
+          left - 1 < 0 ? 0 : integral_image[bottom][left - 1][1];
+      unsigned long D_sq = integral_image[bottom][right][1];
 
       sum = D - B - C + A;
-      sum_squares = pow(D - B - C + A, 2);
+      sum_squares = D_sq - B_sq - C_sq + A_sq;
 
-      // unsigned long A_sq =
-      //     integral_image[0][num_cols * num_rows + top * num_cols + left];
-      // unsigned long B_sq =
-      //     integral_image[0][num_cols * num_rows + top * num_cols + right];
-      // unsigned long C_sq =
-      //     integral_image[0][num_cols * num_rows + bottom * num_cols + left];
-      // unsigned long D_sq =
-      //     integral_image[0][num_cols * num_rows + bottom * num_cols + right];
-
-      // sum_squares = D_sq - B_sq - C_sq + A_sq;
-
-      count =
-          (right - left + 1) *
-          (bottom - top +
-           1); // can't be changed, the squar area could be different each loop
+      count = (right - left + 1) * (bottom - top + 1);
       mean = sum / (double)count;
       stdev = sqrt((sum_squares / (double)count) - (mean * mean));
 
-      // Compute the threshold for the current pixel using the mean and standard
-      // deviation
       threshold = mean * (1.0 + k * ((stdev / R) - 1.0));
 
-      // Binarize the current pixel based on whether it is above or below the
-      // threshold
       output[i][j] = grayscale_map[i][j] > threshold ? 255 : 0;
     }
   }
@@ -543,7 +536,7 @@ int main(int argc, char **argv) {
   int header_length, i, j;
 
   char file_name[] = "./media/016_lanczos.pgm";
-  char output_file_name[] = "./media/016_lanczos_new.pgm";
+  char output_file_name[] = "./media/016_lanczos_new_without.pgm";
 
   /* ----------------------------- Read PPM Header ----------------------------
    */
@@ -619,12 +612,27 @@ int main(int argc, char **argv) {
   //     (unsigned int **)alloc_2D_array(num_rows, num_cols, sizeof(unsigned
   //     int));
 
-  unsigned long **integral_image =
-      (unsigned long **)malloc(num_rows * sizeof(unsigned long *));
-  integral_image[0] =
-      (unsigned long *)malloc(num_rows * num_cols * sizeof(unsigned long));
-  for (int i = 1; i < num_rows; i++) {
-    integral_image[i] = integral_image[i - 1] + num_cols;
+  // Allocate memory for the first dimension
+  unsigned long long ***integral_image =
+      (unsigned long long ***)malloc(num_rows * sizeof(unsigned long long **));
+
+  // Allocate memory for the second dimension
+  integral_image[0] = (unsigned long long **)malloc(
+      num_rows * num_cols * sizeof(unsigned long long *));
+
+  // Allocate memory for the third dimension
+  integral_image[0][0] = (unsigned long long *)malloc(
+      num_rows * num_cols * 2 * sizeof(unsigned long long));
+
+  // Set up the pointers for the second and third dimensions
+  for (int i = 0; i < num_rows; i++) {
+    if (i > 0) {
+      integral_image[i] = integral_image[0] + i * num_cols;
+      integral_image[i][0] = integral_image[0][0] + i * num_cols * 2;
+    }
+    for (int j = 1; j < num_cols; j++) {
+      integral_image[i][j] = integral_image[i][j - 1] + 2;
+    }
   }
 
   compute_integral_image(gray_channel, integral_image, num_cols, num_rows);
@@ -641,7 +649,7 @@ int main(int argc, char **argv) {
   sauvola_threshold(gray_channel, output, num_cols, num_rows, 0.5, 13, 255);
 
   // sauvola_threshold_with_integral_image(gray_channel, integral_image, output,
-  //                                       num_cols, num_rows, 0.5, 1, 255);
+  //                                       num_cols, num_rows, 0.5, 13, 255);
 
   /* ------------------------------ Write Result ------------------------------
    */
@@ -662,10 +670,11 @@ int main(int argc, char **argv) {
   // free(blue_channel);
   free(gray_channel[0]);
   free(gray_channel);
-  free(integral_image[0]);
-  free(integral_image);
   free(output[0]);
   free(output);
+  free(integral_image[0][0]);
+  free(integral_image[0]);
+  free(integral_image);
 
   return 0;
 }
