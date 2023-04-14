@@ -61,6 +61,41 @@ unsigned char **alloc_2D_unsigned_char(int num_rows, int num_cols) {
 }
 
 /**
+ * Allocates memory for an integral image with two channels (sum and sum of
+ * squares).
+ *
+ * @param num_rows The number of rows in the integral image.
+ * @param num_cols The number of columns in the integral image.
+ * @return A 3D array of unsigned long long representing the integral image.
+ */
+unsigned long long ***alloc_integral_image(int num_rows, int num_cols) {
+  // Allocate memory for the first dimension
+  unsigned long long ***integral_image =
+      (unsigned long long ***)malloc(num_rows * sizeof(unsigned long long **));
+
+  // Allocate memory for the second dimension
+  integral_image[0] = (unsigned long long **)malloc(
+      num_rows * num_cols * sizeof(unsigned long long *));
+
+  // Allocate memory for the third dimension
+  integral_image[0][0] = (unsigned long long *)malloc(
+      num_rows * num_cols * 2 * sizeof(unsigned long long));
+
+  // Set up the pointers for the second and third dimensions
+  for (int i = 0; i < num_rows; i++) {
+    if (i > 0) {
+      integral_image[i] = integral_image[0] + i * num_cols;
+      integral_image[i][0] = integral_image[0][0] + i * num_cols * 2;
+    }
+    for (int j = 1; j < num_cols; j++) {
+      integral_image[i][j] = integral_image[i][j - 1] + 2;
+    }
+  }
+
+  return integral_image;
+}
+
+/**
  * This function performs simple binarization on a grayscale image map,
  * converting each pixel to either black or white based on a threshold value.
  */
@@ -633,28 +668,8 @@ int main(int argc, char **argv) {
   /* ----------------------------- Integral Image -----------------------------
    */
 
-  // Allocate memory for the first dimension
   unsigned long long ***integral_image =
-      (unsigned long long ***)malloc(num_rows * sizeof(unsigned long long **));
-
-  // Allocate memory for the second dimension
-  integral_image[0] = (unsigned long long **)malloc(
-      num_rows * num_cols * sizeof(unsigned long long *));
-
-  // Allocate memory for the third dimension
-  integral_image[0][0] = (unsigned long long *)malloc(
-      num_rows * num_cols * 2 * sizeof(unsigned long long));
-
-  // Set up the pointers for the second and third dimensions
-  for (int i = 0; i < num_rows; i++) {
-    if (i > 0) {
-      integral_image[i] = integral_image[0] + i * num_cols;
-      integral_image[i][0] = integral_image[0][0] + i * num_cols * 2;
-    }
-    for (int j = 1; j < num_cols; j++) {
-      integral_image[i][j] = integral_image[i][j - 1] + 2;
-    }
-  }
+      alloc_integral_image(num_rows, num_cols);
 
   // Calculate integral image
   compute_integral_image(gray_channel, integral_image, num_cols, num_rows);
