@@ -1,4 +1,5 @@
 #include <ctype.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -88,7 +89,7 @@ void simple_binarization(unsigned char **grayscale_map, int threshold,
  * O(num_cols*num_cols) time, where num_cols and num_rows are the dimensions of
  * the input array.
  */
-void compute_integral_image(unsigned char **input, long int **output,
+void compute_integral_image(unsigned char **input, unsigned long **output,
                             int num_cols, int num_rows) {
   int i, j;
 
@@ -412,76 +413,259 @@ int write_ppm_image(const char *file_name, unsigned char *red_channel,
 }
 
 /* -------------------------------------------------------------------------- */
+/*                       Sauvola Thresholding Algorithm                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Implements the Sauvola thresholding algorithm for binarizing grayscale
+ * images.
+ *
+ * @param grayscale_map A 2D array of unsigned char representing the input
+ * grayscale image.
+ * @param num_cols The number of columns in the input image.
+ * @param num_rows The number of rows in the input image.
+ * @param k The sensitivity parameter for the algorithm. Values between 0.2 and
+ * 0.5 are typical.
+ * @param r The window radius for the local region around each pixel. Values
+ * between 10 and 20 are typical.
+ * @param output A 2D array of unsigned char representing the output binary
+ * image.
+ * @param R The dynamic range of the image. Set to the maximum value of the
+ * image data type.
+ */
+void sauvola_threshold(unsigned char **grayscale_map, unsigned char **output,
+                       int num_cols, int num_rows, float k, int r, float R) {
+  unsigned long long sum, sum_squares;
+  long count;
+  float mean, stdev, threshold;
+
+  for (int i = 0; i < num_rows; i++) {
+    for (int j = 0; j < num_cols; j++) {
+      // Determine the bounds of the local region around the current pixel
+      int left = fmax(j - r, 0);
+      int right = fmin(j + r, num_cols - 1);
+      int top = fmax(i - r, 0);
+      int bottom = fmin(i + r, num_rows - 1);
+
+      // Compute the mean and standard deviation of the pixel values in the
+      // local region
+      sum = 0;
+      sum_squares = 0;
+      for (int x = top; x <= bottom; x++) {
+        for (int y = left; y <= right; y++) {
+          sum += grayscale_map[x][y];
+          sum_squares += pow(grayscale_map[x][y], 2);
+        }
+      }
+
+      count =
+          (bottom - top + 1) *
+          (right - left +
+           1); // can't be changed, the squar area could be different each loop
+      mean = sum / count;
+      stdev = sqrt((sum_squares / count) - (mean * mean));
+
+      // Compute the threshold for the current pixel using the mean and standard
+      // deviation
+      threshold = mean * (1.0 + k * ((stdev / R) - 1.0));
+
+      // Binarize the current pixel based on whether it is above or below the
+      // threshold
+      output[i][j] = grayscale_map[i][j] > threshold ? 255 : 0;
+    }
+  }
+}
+
+void sauvola_threshold_with_integral_image(unsigned char **grayscale_map,
+                                           unsigned long **integral_image,
+                                           unsigned char **output, int num_cols,
+                                           int num_rows, float k, int r,
+                                           float R) {
+  unsigned long long sum, sum_squares;
+  long count;
+  double mean, stdev, threshold;
+
+  for (int i = 0; i < num_rows; i++) {
+    for (int j = 0; j < num_cols; j++) {
+      // Determine the bounds of the local region around the current pixel
+      int left = fmax(j - r, 0);
+      int right = fmin(j + r, num_cols - 1);
+      int top = fmax(i - r, 0);
+      int bottom = fmin(i + r, num_rows - 1);
+
+      // Compute the mean and standard deviation of the pixel values in the
+      // local region
+      unsigned long A =
+          (top - 1 < 0 || left - 1 < 0) ? 0 : integral_image[top - 1][left - 1];
+      unsigned long B = top - 1 < 0 ? 0 : integral_image[top - 1][right];
+      unsigned long C = left - 1 < 0 ? 0 : integral_image[bottom][left - 1];
+      unsigned long D = integral_image[bottom][right];
+
+      sum = D - B - C + A;
+      sum_squares = pow(D - B - C + A, 2);
+
+      // unsigned long A_sq =
+      //     integral_image[0][num_cols * num_rows + top * num_cols + left];
+      // unsigned long B_sq =
+      //     integral_image[0][num_cols * num_rows + top * num_cols + right];
+      // unsigned long C_sq =
+      //     integral_image[0][num_cols * num_rows + bottom * num_cols + left];
+      // unsigned long D_sq =
+      //     integral_image[0][num_cols * num_rows + bottom * num_cols + right];
+
+      // sum_squares = D_sq - B_sq - C_sq + A_sq;
+
+      count =
+          (right - left + 1) *
+          (bottom - top +
+           1); // can't be changed, the squar area could be different each loop
+      mean = sum / (double)count;
+      stdev = sqrt((sum_squares / (double)count) - (mean * mean));
+
+      // Compute the threshold for the current pixel using the mean and standard
+      // deviation
+      threshold = mean * (1.0 + k * ((stdev / R) - 1.0));
+
+      // Binarize the current pixel based on whether it is above or below the
+      // threshold
+      output[i][j] = grayscale_map[i][j] > threshold ? 255 : 0;
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /*                                Main Program                                */
 /* -------------------------------------------------------------------------- */
 
 int main(int argc, char **argv) {
   int num_rows, num_cols;
   int max_color;
-  int header_pos, i, j;
+  int header_length, i, j;
 
-  char file_name[] = "./media/maly.ppm";
-  char output_file_name[] = "./media/maly.pgm";
+  char file_name[] = "./media/016_lanczos.pgm";
+  char output_file_name[] = "./media/016_lanczos_new.pgm";
+
+  /* ----------------------------- Read PPM Header ----------------------------
+   */
 
   // Read header to get dimensions and max color value
-  if ((header_pos =
-           read_ppm_header(file_name, &num_rows, &num_cols, &max_color)) <= 0)
+  // if ((header_length =
+  //          read_ppm_header(file_name, &num_rows, &num_cols, &max_color)) <=
+  //          0)
+  //   exit(1);
+
+  /* ----------------------------- Read PGM Header ----------------------------
+   */
+
+  // Read header to get dimensions and max color value
+  if ((header_length =
+           read_pgm_header(file_name, &num_rows, &num_cols, &max_color)) <= 0)
     exit(1);
 
-  // Allocate memory for RGB arrays
-  unsigned char **red_channel = (unsigned char **)alloc_2D_array(
-      num_rows, num_cols, sizeof(unsigned char));
-  unsigned char **green_channel = (unsigned char **)alloc_2D_array(
-      num_rows, num_cols, sizeof(unsigned char));
-  unsigned char **blue_channel = (unsigned char **)alloc_2D_array(
-      num_rows, num_cols, sizeof(unsigned char));
-
-  // Read RGB data from file
-  if (read_ppm_data(red_channel[0], green_channel[0], blue_channel[0],
-                    file_name, header_pos, num_rows, num_cols, max_color) == 0)
-    exit(1);
+  /* ------------------------ Alloc Grayscale 2D Array ------------------------
+   */
 
   // Allocate memory for grayscale array
   unsigned char **gray_channel = (unsigned char **)alloc_2D_array(
       num_rows, num_cols, sizeof(unsigned char));
 
+  /* ---------------------- Read PGM Image Data ---------------------- */
+
+  if (read_pgm_data(gray_channel[0], file_name, header_length, num_rows,
+                    num_cols, max_color) == 0)
+    ;
+
+  /* ----------------------- Read PPM Image Data --------------------- */
+
   // Compute grayscale values from RGB values
-  unsigned char r, g, b, gray_value;
-  for (i = 0; i < num_rows; ++i) {
-    for (j = 0; j < num_cols; ++j) {
-      r = red_channel[i][j];
-      g = green_channel[i][j];
-      b = blue_channel[i][j];
-      gray_value = (unsigned char)((0.299 * r) + (0.587 * g) + (0.114 * b));
-      gray_channel[i][j] = gray_value;
-    }
-  }
+  // unsigned char r, g, b, gray_value;
+  // for (i = 0; i < num_rows; ++i) {
+  //   for (j = 0; j < num_cols; ++j) {
+  //     r = red_channel[i][j];
+  //     g = green_channel[i][j];
+  //     b = blue_channel[i][j];
+  //     gray_value = (unsigned char)((0.299 * r) + (0.587 * g) + (0.114 *
+  //     b)); gray_channel[i][j] = gray_value;
+  //   }
+  // }
+
+  // Allocate memory for RGB arrays
+  // unsigned char **red_channel = (unsigned char **)alloc_2D_array(
+  //     num_rows, num_cols, sizeof(unsigned char));
+  // unsigned char **green_channel = (unsigned char **)alloc_2D_array(
+  //     num_rows, num_cols, sizeof(unsigned char));
+  // unsigned char **blue_channel = (unsigned char **)alloc_2D_array(
+  //     num_rows, num_cols, sizeof(unsigned char));
+
+  // Read RGB data from file
+  // if (read_ppm_data(red_channel[0], green_channel[0], blue_channel[0],
+  //                   file_name, header_length, num_rows, num_cols,
+  //                   max_color)
+  //                   == 0)
+  //   exit(1);
+
+  /* --------------------------- Alloc Output Array ---------------------------
+   */
+
+  // Allocate memory for output array
+  unsigned char **output = (unsigned char **)alloc_2D_array(
+      num_rows, num_cols, sizeof(unsigned char));
+
+  /* ----------------------------- Integral Image -----------------------------
+   */
 
   // Calculate integral image
-  long int **integral_image =
-      (long int **)alloc_2D_array(num_rows, num_cols, sizeof(long int));
+  // unsigned int **integral_image =
+  //     (unsigned int **)alloc_2D_array(num_rows, num_cols, sizeof(unsigned
+  //     int));
+
+  unsigned long **integral_image =
+      (unsigned long **)malloc(num_rows * sizeof(unsigned long *));
+  integral_image[0] =
+      (unsigned long *)malloc(num_rows * num_cols * sizeof(unsigned long));
+  for (int i = 1; i < num_rows; i++) {
+    integral_image[i] = integral_image[i - 1] + num_cols;
+  }
 
   compute_integral_image(gray_channel, integral_image, num_cols, num_rows);
+
+  /* --------------------------- Simple Binarization --------------------------
+   */
 
   // simple binarization with a fixed threshold
   // simple_binarization(gray_channel, 100, num_rows, num_cols);
 
+  /* ---------------------------- Sauvola Threshold ---------------------------
+   */
+
+  sauvola_threshold(gray_channel, output, num_cols, num_rows, 0.5, 13, 255);
+
+  // sauvola_threshold_with_integral_image(gray_channel, integral_image, output,
+  //                                       num_cols, num_rows, 0.5, 1, 255);
+
+  /* ------------------------------ Write Result ------------------------------
+   */
+
   // write pgm file
-  if (write_pgm_image(output_file_name, gray_channel[0], num_rows, num_cols,
-                      255) == 0)
+  if (write_pgm_image(output_file_name, output[0], num_rows, num_cols, 255) ==
+      0)
     exit(1);
 
-  // Free memory
-  free(red_channel[0]);
-  free(red_channel);
-  free(green_channel[0]);
-  free(green_channel);
-  free(blue_channel[0]);
-  free(blue_channel);
+  /* ------------------------------- Free Memory ------------------------------
+   */
+
+  // free(red_channel[0]);
+  // free(red_channel);
+  // free(green_channel[0]);
+  // free(green_channel);
+  // free(blue_channel[0]);
+  // free(blue_channel);
   free(gray_channel[0]);
   free(gray_channel);
   free(integral_image[0]);
   free(integral_image);
+  free(output[0]);
+  free(output);
 
   return 0;
 }
