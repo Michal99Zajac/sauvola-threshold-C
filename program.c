@@ -40,14 +40,15 @@ void skip_comments(FILE *file) {
  * the array. The function takes the number of rows, columns and size of the
  * data type as input arguments. It returns a void** pointer to the array.
  */
-void **alloc_2D_array(int num_rows, int num_cols, size_t type_size) {
+unsigned char **alloc_2D_unsigned_char(int num_rows, int num_cols) {
   int i;
 
   // Allocate memory for the row pointers
-  void **arr = (void **)malloc(num_rows * sizeof(void *));
+  unsigned char **arr =
+      (unsigned char **)malloc(num_rows * sizeof(unsigned char *));
 
   // Allocate memory for the data and assign it to the first row pointer
-  arr[0] = calloc(num_rows * num_cols, type_size);
+  arr[0] = (unsigned char *)malloc(num_rows * num_cols * sizeof(unsigned char));
 
   // Assign the remaining row pointers to point to the appropriate location in
   // the data
@@ -586,8 +587,7 @@ int main(int argc, char **argv) {
    */
 
   // Allocate memory for grayscale array
-  unsigned char **gray_channel = (unsigned char **)alloc_2D_array(
-      num_rows, num_cols, sizeof(unsigned char));
+  unsigned char **gray_channel = alloc_2D_unsigned_char(num_rows, num_cols);
 
   /* ---------------------- Read PGM Image Data ---------------------- */
 
@@ -610,12 +610,12 @@ int main(int argc, char **argv) {
   // }
 
   // Allocate memory for RGB arrays
-  // unsigned char **red_channel = (unsigned char **)alloc_2D_array(
-  //     num_rows, num_cols, sizeof(unsigned char));
-  // unsigned char **green_channel = (unsigned char **)alloc_2D_array(
-  //     num_rows, num_cols, sizeof(unsigned char));
-  // unsigned char **blue_channel = (unsigned char **)alloc_2D_array(
-  //     num_rows, num_cols, sizeof(unsigned char));
+  // unsigned char **red_channel = alloc_2D_unsigned_char(
+  //     num_rows, num_cols);
+  // unsigned char **green_channel = alloc_2D_unsigned_char(
+  //     num_rows, num_cols);
+  // unsigned char **blue_channel = alloc_2D_unsigned_char(
+  //     num_rows, num_cols);
 
   // Read RGB data from file
   // if (read_ppm_data(red_channel[0], green_channel[0], blue_channel[0],
@@ -628,16 +628,10 @@ int main(int argc, char **argv) {
    */
 
   // Allocate memory for output array
-  unsigned char **output = (unsigned char **)alloc_2D_array(
-      num_rows, num_cols, sizeof(unsigned char));
+  unsigned char **output = alloc_2D_unsigned_char(num_rows, num_cols);
 
   /* ----------------------------- Integral Image -----------------------------
    */
-
-  // Calculate integral image
-  // unsigned int **integral_image =
-  //     (unsigned int **)alloc_2D_array(num_rows, num_cols, sizeof(unsigned
-  //     int));
 
   // Allocate memory for the first dimension
   unsigned long long ***integral_image =
@@ -662,6 +656,7 @@ int main(int argc, char **argv) {
     }
   }
 
+  // Calculate integral image
   compute_integral_image(gray_channel, integral_image, num_cols, num_rows);
 
   /* --------------------------- Simple Binarization --------------------------
@@ -676,7 +671,7 @@ int main(int argc, char **argv) {
   // sauvola_threshold(gray_channel, output, num_cols, num_rows, 0.5, 13, 255);
 
   sauvola_threshold_with_integral_image(gray_channel, integral_image, output,
-                                        num_cols, num_rows, 0.5, 10, 255);
+                                        num_cols, num_rows, 0.5, 13, 255);
 
   /* ------------------------------ Write Result ------------------------------
    */
