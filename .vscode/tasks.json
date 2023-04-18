@@ -9,8 +9,13 @@
         "-g",
         "${file}",
         "-o",
-        "${fileDirname}/${fileBasenameNoExtension}",
-        "-lm"
+        "${fileDirname}/${file}",
+        "-lm",
+        "-O3",
+        "-funroll-loops",
+        "-march=native",
+        "-ffast-math",
+        "-mavx2"
       ],
       "options": {
         "cwd": "${fileDirname}"
