@@ -12,7 +12,7 @@
 /* -------------------------------------------------------------------------- */
 
 double pgm_sauvola_flow(const char *input_file_name,
-                        const char *output_file_name) {
+                        const char *output_file_name, int r) {
   int num_rows, num_cols;
   int max_color;
   int header_length, i, j;
@@ -39,7 +39,7 @@ double pgm_sauvola_flow(const char *input_file_name,
   start_time = clock();
 
   // Sauvola threshold
-  sauvola_threshold(grayscale, output, num_cols, num_rows, 0.5, 13, 255);
+  sauvola_threshold(grayscale, output, num_cols, num_rows, 0.5, r, 255);
 
   // end timing
   end_time = clock();
@@ -61,7 +61,8 @@ double pgm_sauvola_flow(const char *input_file_name,
 }
 
 double pgm_sauvola_flow_with_integral_image(const char *input_file_name,
-                                            const char *output_file_name) {
+                                            const char *output_file_name,
+                                            int r) {
   int num_rows, num_cols;
   int max_color;
   int header_length, i, j;
@@ -96,7 +97,7 @@ double pgm_sauvola_flow_with_integral_image(const char *input_file_name,
 
   // Sauvola threshold
   sauvola_threshold_with_integral_image(grayscale, integral_image, output,
-                                        num_cols, num_rows, 0.5, 13, 255);
+                                        num_cols, num_rows, 0.5, r, 255);
 
   // end timing
   end_time = clock();
