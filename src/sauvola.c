@@ -55,8 +55,8 @@ void sauvola_threshold(unsigned char **grayscale, unsigned char **output,
           (bottom - top + 1) *
           (right - left +
            1); // can't be changed, the squar area could be different each loop
-      mean = sum / count;
-      stdev = sqrt((sum_squares / count) - (mean * mean));
+      mean = sum / (double)count;
+      stdev = sqrt((sum_squares / (double)count) - (mean * mean));
 
       // Compute the threshold for the current pixel using the mean and standard
       // deviation
@@ -126,10 +126,9 @@ void sauvola_threshold_with_integral_image(unsigned char **grayscale,
       sum_squares = D_sq - B_sq - C_sq + A_sq;
 
       // Compute the mean and standard deviation for the local region
-      count =
-          (right - left + 1) *
-          (bottom - top +
-           1); // can't be changed, the squar area could be different each loop
+      count = (right - left + 1) *
+              (bottom - top + 1); // can't be changed, the squar area could be
+                                  // different each loop
       mean = sum / (double)count;
       stdev = sqrt((sum_squares / (double)count) - (mean * mean));
 
